@@ -233,7 +233,12 @@ impl RespDecode for BulkString {
 
     fn expect_length(buf: &[u8]) -> Result<usize, RespError> {
         let (end, len) = parse_length(buf, Self::PREFIX)?;
-        Ok(end + CRLF_LEN + len + CRLF_LEN)
+        // 因为要加上长度之后的\r\n & 结束的\r\n 所以需要检查最终长度是否足够
+        let len = end + CRLF_LEN + len + CRLF_LEN;
+        if len > buf.len() {
+            return Err(RespError::NotComplete);
+        }
+        Ok(len)
     }
 }
 
@@ -267,6 +272,7 @@ impl RespDecode for RespArray {
     }
     fn expect_length(buf: &[u8]) -> Result<usize, RespError> {
         let (end, len) = parse_length(buf, Self::PREFIX)?;
+
         calc_total_length(buf, end, len, Self::PREFIX)
     }
 }
@@ -424,11 +430,6 @@ fn calc_total_length(buf: &[u8], end: usize, len: usize, prefix: &str) -> Result
             for _ in 0..len {
                 let len = RespFrame::expect_length(data)?;
 
-                // 这里越界了
-                if len > data.len() {
-                    return Err(RespError::NotComplete);
-                }
-
                 data = &data[len..];
                 total += len;
             }
@@ -439,17 +440,10 @@ fn calc_total_length(buf: &[u8], end: usize, len: usize, prefix: &str) -> Result
             for _ in 0..len {
                 let len = SimpleString::expect_length(data)?;
 
-                if len > data.len() {
-                    return Err(RespError::NotComplete);
-                }
-
                 data = &data[len..];
                 total += len;
 
                 let len = RespFrame::expect_length(data)?;
-                if len > data.len() {
-                    return Err(RespError::NotComplete);
-                }
 
                 data = &data[len..];
                 total += len;
@@ -635,7 +629,6 @@ mod tests {
                 BulkString::new("hello").into()
             ])
         );
-
         // 异常逻辑1
         let mut buf = BytesMut::from("*2\r\n$3\r\nget\r\n$5\r\nhello\r");
         let frame = RespArray::decode(&mut buf);
