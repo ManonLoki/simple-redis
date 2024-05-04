@@ -2,8 +2,7 @@
 -如何解析Frame
     - simple string:"+OK\r\n"
     - error:"-Error message\r\n"
-    - bulk error:"!<Length>\r\n<error>\r\n"
-    - integer:"[>]<value>\r\n"
+    - integer:":[<+|->]<value>\r\n"
     - bulk string:"$<Length>\r\n<data>\r\n"
     - null bulk string:"$-1\r\n"
     - array:"*<number-of-elements>\r\n<element-1>...<element-n>"
@@ -22,36 +21,67 @@
 创建一个Encoding和Decoding的trait，用来表示如何处理数据
 为每一个类型 实现encoding和decoding的trait
 */
+mod decode;
 mod encode;
 
 use std::{
-    collections::{HashMap, HashSet},
-    ops::Deref,
+    collections::BTreeMap,
+    ops::{Deref, DerefMut},
 };
 
+use bytes::BytesMut;
+use thiserror::Error;
+
 /// RESP编码
+#[enum_dispatch::enum_dispatch]
 pub trait RespEncode {
     /// 将自己编码为Vec<u8>
     fn encode(self) -> Vec<u8>;
 }
 /// RESP解码
-pub trait RespDecode {
-    /// 将Vec<u8>解码为自己
-    fn decode(buf: Self) -> Result<RespFrame, String>;
+/// 如果想返回Self 那么必须是Sized
+#[enum_dispatch::enum_dispatch]
+pub trait RespDecode: Sized {
+    /// 前缀
+    const PREFIX: &'static str;
+    /// 将BytesMut解码为自己
+    fn decode(buf: &mut BytesMut) -> Result<Self, RespError>;
+
+    /// 期望的长度
+    fn expect_length(buf: &[u8]) -> Result<usize, RespError>;
 }
 
+/// Resp解码异常
+#[derive(Error, Debug, PartialEq, Eq)]
+pub enum RespError {
+    #[error("Invalid Frame: {0}")]
+    InvalidFrame(String),
+    #[error("Invalid Frame Type: {0}")]
+    InvalidFrameType(String),
+    #[error("Invalid Frame Length: {0}")]
+    InvalidFrameLength(usize),
+    #[error("Frame Not Complete")]
+    NotComplete,
+    #[error("Invalid Parse: {0}")]
+    InvalidIntParse(#[from] std::num::ParseIntError),
+    #[error("Invalid Parse: {0}")]
+    InvalidFloatParse(#[from] std::num::ParseFloatError),
+}
+
+#[enum_dispatch::enum_dispatch(RespEncode)]
+#[derive(Debug, PartialEq)]
 pub enum RespFrame {
     // - simple string:"+OK\r\n"
     SimpleString(SimpleString),
     // - error:"-Error message\r\n"
     Error(SimpleError),
-    // - integer:"[>]<value>\r\n"
+    // - integer:":[<+|->]<value>\r\n"
     Integer(i64),
     // - bulk string:"$<Length>\r\n<data>\r\n"
     BulkString(BulkString),
     // - array:"*<number-of-elements>\r\n<element-1>...<element-n>"
     //    -"*2\r\n$3\r\nget\r\n$5\r\nhellolr\n"
-    Array(Vec<RespFrame>),
+    Array(RespArray),
     // - null bulk string:"$-1\r\n"
     NullBlukString(RespNullBulkString),
     // - null:"_\r\n"
@@ -69,23 +99,36 @@ pub enum RespFrame {
 }
 
 /// SimpleString
+#[derive(Debug, PartialEq)]
 pub struct SimpleString(String);
 
 /// SimpleError
+#[derive(Debug, PartialEq)]
 pub struct SimpleError(String);
 
 /// BulkString
+#[derive(Debug, PartialEq)]
 pub struct BulkString(Vec<u8>);
+
 /// RespNullBulkString
+#[derive(Debug, PartialEq)]
 pub struct RespNullBulkString;
 /// RespNull
+#[derive(Debug, PartialEq)]
 pub struct RespNull;
 /// RespNullArray
+#[derive(Debug, PartialEq)]
 pub struct RespNullArray;
+
+/// RespArray
+#[derive(Debug, PartialEq)]
+pub struct RespArray(Vec<RespFrame>);
 /// RespMap
-pub struct RespMap(HashMap<String, RespFrame>);
+#[derive(Debug, PartialEq, Default)]
+pub struct RespMap(BTreeMap<String, RespFrame>);
 /// RespSet
-pub struct RespSet(HashSet<RespFrame>);
+#[derive(Debug, PartialEq, Default)]
+pub struct RespSet(Vec<RespFrame>);
 
 impl Deref for SimpleString {
     type Target = String;
@@ -111,24 +154,115 @@ impl Deref for BulkString {
     }
 }
 
-impl Deref for RespMap {
-    type Target = HashMap<String, RespFrame>;
+impl Deref for RespArray {
+    type Target = Vec<RespFrame>;
 
     fn deref(&self) -> &Self::Target {
         &self.0
     }
 }
 
-impl Deref for RespSet {
-    type Target = HashSet<RespFrame>;
+impl Deref for RespMap {
+    type Target = BTreeMap<String, RespFrame>;
 
     fn deref(&self) -> &Self::Target {
         &self.0
+    }
+}
+
+impl DerefMut for RespMap {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
+    }
+}
+
+impl Deref for RespSet {
+    type Target = Vec<RespFrame>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+impl DerefMut for RespSet {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
     }
 }
 
 impl SimpleString {
     pub fn new(s: impl Into<String>) -> Self {
         SimpleString(s.into())
+    }
+}
+
+impl SimpleError {
+    pub fn new(s: impl Into<String>) -> Self {
+        SimpleError(s.into())
+    }
+}
+
+impl BulkString {
+    pub fn new(s: impl Into<Vec<u8>>) -> Self {
+        BulkString(s.into())
+    }
+}
+
+impl RespArray {
+    pub fn new(s: impl Into<Vec<RespFrame>>) -> Self {
+        RespArray(s.into())
+    }
+}
+
+impl RespSet {
+    pub fn new(s: impl Into<Vec<RespFrame>>) -> Self {
+        RespSet(s.into())
+    }
+}
+
+impl From<&str> for SimpleString {
+    fn from(s: &str) -> Self {
+        SimpleString(s.to_string())
+    }
+}
+
+impl From<&str> for RespFrame {
+    fn from(s: &str) -> Self {
+        SimpleString(s.to_string()).into()
+    }
+}
+
+impl From<&str> for SimpleError {
+    fn from(s: &str) -> Self {
+        SimpleError(s.to_string())
+    }
+}
+
+impl From<&str> for BulkString {
+    fn from(s: &str) -> Self {
+        BulkString(s.as_bytes().to_vec())
+    }
+}
+
+impl From<&[u8]> for BulkString {
+    fn from(s: &[u8]) -> Self {
+        BulkString(s.to_vec())
+    }
+}
+
+impl From<&[u8]> for RespFrame {
+    fn from(s: &[u8]) -> Self {
+        BulkString(s.to_vec()).into()
+    }
+}
+
+impl<const N: usize> From<&[u8; N]> for BulkString {
+    fn from(s: &[u8; N]) -> Self {
+        BulkString(s.to_vec())
+    }
+}
+
+impl<const N: usize> From<&[u8; N]> for RespFrame {
+    fn from(s: &[u8; N]) -> Self {
+        BulkString(s.to_vec()).into()
     }
 }
