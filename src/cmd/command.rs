@@ -1,6 +1,6 @@
 use crate::{RespArray, RespFrame};
 
-use super::{CommandError, Get, HGet, HGetAll, HSet, Set, Unrecognized};
+use super::{CommandError, Get, HGet, HGetAll, HSet, Ping, Set, Unrecognized};
 
 /// 创建支持的命令
 #[enum_dispatch::enum_dispatch(CommandExecutor)]
@@ -11,7 +11,7 @@ pub enum Command {
     HGet(HGet),
     HSet(HSet),
     HGetAll(HGetAll),
-
+    Ping(Ping),
     Unrecognized(Unrecognized),
 }
 
@@ -43,6 +43,7 @@ impl TryFrom<RespArray> for Command {
                 b"hget" => Ok(HGet::try_from(value)?.into()),
                 b"hset" => Ok(HSet::try_from(value)?.into()),
                 b"hgetall" => Ok(HGetAll::try_from(value)?.into()),
+                b"ping" => Ok(Ping::try_from(value)?.into()),
                 _ => Ok(Unrecognized.into()),
             },
             _ => Err(CommandError::InvalidCommand(

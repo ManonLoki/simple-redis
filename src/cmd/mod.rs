@@ -1,6 +1,7 @@
 mod command;
 mod hmap;
 mod map;
+mod ping;
 mod unrecognized;
 
 use lazy_static::lazy_static;
@@ -13,6 +14,7 @@ pub use self::{
     command::Command,
     hmap::{HGet, HGetAll, HSet},
     map::{Get, Set},
+    ping::Ping,
     unrecognized::Unrecognized,
 };
 lazy_static! {
