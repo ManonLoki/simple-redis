@@ -1,36 +1,41 @@
 /*
--如何解析Frame
-    - simple string:"+OK\r\n"
-    - error:"-Error message\r\n"
-    - integer:":[<+|->]<value>\r\n"
-    - bulk string:"$<Length>\r\n<data>\r\n"
-    - null bulk string:"$-1\r\n"
-    - array:"*<number-of-elements>\r\n<element-1>...<element-n>"
-        -"*2\r\n$3\r\nget\r\n$5\r\nhellolr\n"
-    - null array:"*-1\r\n"
-    - null:"_\r\n"
-    - boolean:"#<tf>\r\n"
-    - double:",[+>]<integral>[.<fractional>][<Ee>[sign]<exponent>]\r\n"
-    - big number:"([+]<number>\r\n"
-    - map:"%<number-of-entries>\r\n<key-1><value-1>...<key-n><value-n>"
-    - set:"~<number-of-elements>\r\n<element-1>..<element-n>"
-*/
-
-/*
 思路，创建一个RedisFrame的枚举，用来保存所有的数据类型
 创建一个Encoding和Decoding的trait，用来表示如何处理数据
 为每一个类型 实现encoding和decoding的trait
 */
-mod decode;
-mod encode;
 
-use std::{
-    collections::BTreeMap,
-    ops::{Deref, DerefMut},
+mod array;
+mod boolean;
+mod bulk_string;
+mod double;
+mod frame;
+mod intenger;
+mod map;
+mod null;
+mod set;
+mod simpe_string;
+mod simple_error;
+
+use bytes::{Buf, BytesMut};
+use thiserror::Error;
+
+pub use {
+    self::array::{RespArray, RespNullArray},
+    bulk_string::{BulkString, RespNullBulkString},
+    frame::RespFrame,
+    map::RespMap,
+    null::RespNull,
+    set::RespSet,
+    simpe_string::SimpleString,
+    simple_error::SimpleError,
 };
 
-use bytes::BytesMut;
-use thiserror::Error;
+/// 预分配的缓冲区大小
+const RESP_ARRAY_CAP: usize = 4096;
+/// 结束符
+const CLRF: &[u8] = b"\r\n";
+/// 结束符号长度
+const CRLF_LEN: usize = CLRF.len();
 
 /// RESP编码
 #[enum_dispatch::enum_dispatch]
@@ -68,213 +73,142 @@ pub enum RespError {
     InvalidFloatParse(#[from] std::num::ParseFloatError),
 }
 
-#[enum_dispatch::enum_dispatch(RespEncode)]
-#[derive(Debug, Clone, PartialEq, PartialOrd)]
-pub enum RespFrame {
-    // - simple string:"+OK\r\n"
-    SimpleString(SimpleString),
-    // - error:"-Error message\r\n"
-    Error(SimpleError),
-    // - integer:":[<+|->]<value>\r\n"
-    Integer(i64),
-    // - bulk string:"$<Length>\r\n<data>\r\n"
-    BulkString(BulkString),
-    // - array:"*<number-of-elements>\r\n<element-1>...<element-n>"
-    //    -"*2\r\n$3\r\nget\r\n$5\r\nhellolr\n"
-    Array(RespArray),
-    // - null bulk string:"$-1\r\n"
-    NullBlukString(RespNullBulkString),
-    // - null:"_\r\n"
-    Null(RespNull),
-    // - null array:"*-1\r\n"
-    NullArray(RespNullArray),
-    // - boolean:"#<tf>\r\n"
-    Boolean(bool),
-    // - double:",[+>]<integral>[.<fractional>][<Ee>[sign]<exponent>]\r\n"
-    Double(f64),
-    // - map:"%<number-of-entries>\r\n<key-1><value-1>...<key-n><value-n>"
-    Map(RespMap),
-    // - set:"~<number-of-elements>\r\n<element-1>..<element-n>"
-    Set(RespSet),
+/// 查找结束符号
+pub(crate) fn find_crlf(buf: &[u8], nth: usize) -> Option<usize> {
+    // 计数
+    let mut count = 0;
+    // 查找结束字符"\r\n"
+    for i in 1..buf.len() - 1 {
+        if buf[i] == b'\r' && buf[i + 1] == b'\n' {
+            count += 1;
+            if count == nth {
+                return Some(i);
+            }
+        }
+    }
+
+    None
+}
+/// 处理固定长度的数据
+pub(crate) fn extract_fixed_data(
+    buf: &mut BytesMut,
+    expect: &str,
+    expect_type: &str,
+) -> Result<(), RespError> {
+    // 检查长度
+    if buf.len() < expect.len() {
+        return Err(RespError::NotComplete);
+    }
+
+    // 检查类型标识
+    if !buf.starts_with(expect.as_bytes()) {
+        return Err(RespError::InvalidFrameType(format!(
+            "except ({:}) got:{:?}",
+            expect_type, buf
+        )));
+    }
+    // 移动Buf的位置 到验证的固定组合末尾
+    buf.advance(expect.len());
+
+    Ok(())
 }
 
-/// SimpleString
-#[derive(Debug, Clone, PartialEq, PartialOrd)]
-pub struct SimpleString(pub(crate) String);
+/// 处理简单类型数据
+pub(crate) fn extract_simple_frame_data(buf: &[u8], prefix: &str) -> Result<usize, RespError> {
+    // 简单数据必定为 prefix + data + \r\n
+    // 所以验证最少要大于3
+    if buf.len() < 3 {
+        return Err(RespError::NotComplete);
+    }
+    // 验证前缀
 
-/// SimpleError
-#[derive(Debug, Clone, PartialEq, PartialOrd)]
-pub struct SimpleError(pub(crate) String);
+    if !buf.starts_with(prefix.as_bytes()) {
+        return Err(RespError::InvalidFrameType(format!(
+            "except ({:}) got:{:?}",
+            prefix, buf
+        )));
+    }
 
-/// BulkString
-#[derive(Debug, Clone, PartialEq, PartialOrd)]
-pub struct BulkString(pub(crate) Vec<u8>);
+    // 找到第一个结束符号就返回
+    let end = find_crlf(buf, 1).ok_or(RespError::NotComplete)?;
+    Ok(end)
+}
 
-/// RespNullBulkString
-#[derive(Debug, Clone, PartialEq, PartialOrd)]
-pub struct RespNullBulkString;
-/// RespNull
-#[derive(Debug, Clone, PartialEq, PartialOrd)]
-pub struct RespNull;
-/// RespNullArray
-#[derive(Debug, Clone, PartialEq, PartialOrd)]
-pub struct RespNullArray;
+/// 拿到标头长度
+fn parse_length(buf: &[u8], prefix: &str) -> Result<(usize, usize), RespError> {
+    let end = extract_simple_frame_data(buf, prefix)?;
+    let s = String::from_utf8_lossy(&buf[prefix.len()..end]);
+    Ok((end, s.parse()?))
+}
+/// 计算总长度
+fn calc_total_length(buf: &[u8], end: usize, len: usize, prefix: &str) -> Result<usize, RespError> {
+    // 计算总长度
+    let mut total = end + CRLF_LEN;
+    let mut data = &buf[total..];
 
-/// RespArray
-#[derive(Debug, Clone, PartialEq, PartialOrd)]
-pub struct RespArray(pub(crate) Vec<RespFrame>);
-/// RespMap
-#[derive(Debug, Clone, PartialEq, PartialOrd, Default)]
-pub struct RespMap(pub(crate) BTreeMap<String, RespFrame>);
-/// RespSet
-#[derive(Debug, Clone, PartialEq, PartialOrd, Default)]
-pub struct RespSet(pub(crate) Vec<RespFrame>);
+    match prefix {
+        "*" | "~" => {
+            // 数组和集合只处理元素的长度
+            for _ in 0..len {
+                let len = RespFrame::expect_length(data)?;
 
-impl Deref for SimpleString {
-    type Target = String;
+                data = &data[len..];
+                total += len;
+            }
+            Ok(total)
+        }
+        "%" => {
+            // Map需要处理Key的长度和Value的长度
+            for _ in 0..len {
+                let len = SimpleString::expect_length(data)?;
 
-    fn deref(&self) -> &Self::Target {
-        &self.0
+                data = &data[len..];
+                total += len;
+
+                let len = RespFrame::expect_length(data)?;
+
+                data = &data[len..];
+                total += len;
+            }
+            Ok(total)
+        }
+        _ => Ok(len + CRLF_LEN),
     }
 }
 
-impl Deref for SimpleError {
-    type Target = String;
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use bytes::BytesMut;
 
-    fn deref(&self) -> &Self::Target {
-        &self.0
+    #[test]
+    fn test_find_crlf() {
+        let buf = b"hello\r\nworld\r\n";
+        let pos = find_crlf(buf, 1).unwrap();
+        assert_eq!(pos, 5);
+
+        let pos = find_crlf(buf, 2).unwrap();
+        assert_eq!(pos, 12);
     }
-}
+    #[test]
+    fn test_extract_simple_frame_data() {
+        let buf = b"+hello\r\nworld\r\n";
+        let pos = extract_simple_frame_data(buf, "+").unwrap();
+        assert_eq!(pos, 6);
 
-impl Deref for BulkString {
-    type Target = Vec<u8>;
-
-    fn deref(&self) -> &Self::Target {
-        &self.0
+        let buf = b"+hello\r\nworld\r\n";
+        let pos = extract_simple_frame_data(buf, "-");
+        assert!(pos.is_err());
     }
-}
 
-impl Deref for RespArray {
-    type Target = Vec<RespFrame>;
+    #[test]
+    fn test_extract_fixed_data() {
+        let mut buf = BytesMut::from("+hello\r\nworld\r\n");
+        let pos = extract_fixed_data(&mut buf, "+hello\r\n", "SimpleString");
+        assert!(pos.is_ok());
 
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
-
-impl Deref for RespMap {
-    type Target = BTreeMap<String, RespFrame>;
-
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
-
-impl DerefMut for RespMap {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.0
-    }
-}
-
-impl Deref for RespSet {
-    type Target = Vec<RespFrame>;
-
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
-impl DerefMut for RespSet {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.0
-    }
-}
-
-impl SimpleString {
-    pub fn new(s: impl Into<String>) -> Self {
-        SimpleString(s.into())
-    }
-}
-
-impl SimpleError {
-    pub fn new(s: impl Into<String>) -> Self {
-        SimpleError(s.into())
-    }
-}
-
-impl BulkString {
-    pub fn new(s: impl Into<Vec<u8>>) -> Self {
-        BulkString(s.into())
-    }
-}
-
-impl RespArray {
-    pub fn new(s: impl Into<Vec<RespFrame>>) -> Self {
-        RespArray(s.into())
-    }
-}
-
-impl RespSet {
-    pub fn new(s: impl Into<Vec<RespFrame>>) -> Self {
-        RespSet(s.into())
-    }
-}
-
-impl From<&str> for SimpleString {
-    fn from(s: &str) -> Self {
-        SimpleString(s.to_string())
-    }
-}
-
-impl From<&str> for RespFrame {
-    fn from(s: &str) -> Self {
-        SimpleString(s.to_string()).into()
-    }
-}
-
-impl From<&str> for SimpleError {
-    fn from(s: &str) -> Self {
-        SimpleError(s.to_string())
-    }
-}
-
-impl From<&str> for BulkString {
-    fn from(s: &str) -> Self {
-        BulkString(s.as_bytes().to_vec())
-    }
-}
-
-impl From<&[u8]> for BulkString {
-    fn from(s: &[u8]) -> Self {
-        BulkString(s.to_vec())
-    }
-}
-
-impl From<&[u8]> for RespFrame {
-    fn from(s: &[u8]) -> Self {
-        BulkString(s.to_vec()).into()
-    }
-}
-
-impl<const N: usize> From<&[u8; N]> for BulkString {
-    fn from(s: &[u8; N]) -> Self {
-        BulkString(s.to_vec())
-    }
-}
-
-impl<const N: usize> From<&[u8; N]> for RespFrame {
-    fn from(s: &[u8; N]) -> Self {
-        BulkString(s.to_vec()).into()
-    }
-}
-
-impl AsRef<str> for SimpleString {
-    fn as_ref(&self) -> &str {
-        self.0.as_str()
-    }
-}
-
-impl AsRef<[u8]> for BulkString {
-    fn as_ref(&self) -> &[u8] {
-        &self.0
+        let mut buf = BytesMut::from("+hello\r\nworld\r\n");
+        let pos = extract_fixed_data(&mut buf, "-hello\r\n", "SimpleError");
+        assert!(pos.is_err());
     }
 }
