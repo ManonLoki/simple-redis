@@ -1,8 +1,8 @@
 use bytes::BytesMut;
 
 use crate::{
-    BulkString, RespArray, RespDecode, RespError, RespMap, RespNull, RespNullArray,
-    RespNullBulkString, RespSet, SimpleError, SimpleString,
+    BulkString, RespArray, RespDecode, RespError, RespMap, RespNull, RespSet, SimpleError,
+    SimpleString,
 };
 
 #[enum_dispatch::enum_dispatch(RespEncode)]
@@ -19,12 +19,11 @@ pub enum RespFrame {
     // - array:"*<number-of-elements>\r\n<element-1>...<element-n>"
     //    -"*2\r\n$3\r\nget\r\n$5\r\nhellolr\n"
     Array(RespArray),
-    // - null bulk string:"$-1\r\n"
-    NullBlukString(RespNullBulkString),
+
     // - null:"_\r\n"
     Null(RespNull),
-    // - null array:"*-1\r\n"
-    NullArray(RespNullArray),
+    // // - null array:"*-1\r\n"
+    // NullArray(RespNullArray),
     // - boolean:"#<tf>\r\n"
     Boolean(bool),
     // - double:",[+>]<integral>[.<fractional>][<Ee>[sign]<exponent>]\r\n"
@@ -54,26 +53,12 @@ impl RespDecode for RespFrame {
                 Ok(frame.into())
             }
             Some(b'$') => {
-                // try null bulk string first
-                match RespNullBulkString::decode(buf) {
-                    Ok(frame) => Ok(frame.into()),
-                    Err(RespError::NotComplete) => Err(RespError::NotComplete),
-                    Err(_) => {
-                        let frame = BulkString::decode(buf)?;
-                        Ok(frame.into())
-                    }
-                }
+                let frame = BulkString::decode(buf)?;
+                Ok(frame.into())
             }
             Some(b'*') => {
-                // try null array first
-                match RespNullArray::decode(buf) {
-                    Ok(frame) => Ok(frame.into()),
-                    Err(RespError::NotComplete) => Err(RespError::NotComplete),
-                    Err(_) => {
-                        let frame = RespArray::decode(buf)?;
-                        Ok(frame.into())
-                    }
-                }
+                let frame = RespArray::decode(buf)?;
+                Ok(frame.into())
             }
             Some(b'_') => {
                 let frame = RespNull::decode(buf)?;

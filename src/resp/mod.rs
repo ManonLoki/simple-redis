@@ -20,14 +20,8 @@ use bytes::{Buf, BytesMut};
 use thiserror::Error;
 
 pub use {
-    self::array::{RespArray, RespNullArray},
-    bulk_string::{BulkString, RespNullBulkString},
-    frame::RespFrame,
-    map::RespMap,
-    null::RespNull,
-    set::RespSet,
-    simpe_string::SimpleString,
-    simple_error::SimpleError,
+    self::array::RespArray, bulk_string::BulkString, frame::RespFrame, map::RespMap,
+    null::RespNull, set::RespSet, simpe_string::SimpleString, simple_error::SimpleError,
 };
 
 /// 预分配的缓冲区大小
@@ -138,8 +132,19 @@ pub(crate) fn extract_simple_frame_data(buf: &[u8], prefix: &str) -> Result<usiz
 fn parse_length(buf: &[u8], prefix: &str) -> Result<(usize, usize), RespError> {
     let end = extract_simple_frame_data(buf, prefix)?;
     let s = String::from_utf8_lossy(&buf[prefix.len()..end]);
-    Ok((end, s.parse()?))
+
+    // 根据前缀判断是否是负数
+    if s.starts_with('-') {
+        if s.starts_with("-1") {
+            Ok((end, 0))
+        } else {
+            Err(RespError::InvalidFrame(format!("Invalid Length:{}", s)))
+        }
+    } else {
+        Ok((end, s.parse()?))
+    }
 }
+
 /// 计算总长度
 fn calc_total_length(buf: &[u8], end: usize, len: usize, prefix: &str) -> Result<usize, RespError> {
     // 计算总长度
@@ -151,7 +156,6 @@ fn calc_total_length(buf: &[u8], end: usize, len: usize, prefix: &str) -> Result
             // 数组和集合只处理元素的长度
             for _ in 0..len {
                 let len = RespFrame::expect_length(data)?;
-
                 data = &data[len..];
                 total += len;
             }
