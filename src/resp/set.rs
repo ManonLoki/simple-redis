@@ -64,12 +64,6 @@ impl RespDecode for RespSet {
     }
 }
 
-impl RespSet {
-    pub fn new(s: impl Into<Vec<RespFrame>>) -> Self {
-        RespSet(s.into())
-    }
-}
-
 impl Deref for RespSet {
     type Target = Vec<RespFrame>;
 
@@ -80,6 +74,12 @@ impl Deref for RespSet {
 impl DerefMut for RespSet {
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.0
+    }
+}
+
+impl RespSet {
+    pub fn new(s: impl Into<Vec<RespFrame>>) -> Self {
+        RespSet(s.into())
     }
 }
 

@@ -42,17 +42,17 @@ impl RespDecode for SimpleError {
     }
 }
 
+impl From<&str> for SimpleError {
+    fn from(s: &str) -> Self {
+        SimpleError(s.to_string())
+    }
+}
+
 impl Deref for SimpleError {
     type Target = String;
 
     fn deref(&self) -> &Self::Target {
         &self.0
-    }
-}
-
-impl From<&str> for SimpleError {
-    fn from(s: &str) -> Self {
-        SimpleError(s.to_string())
     }
 }
 

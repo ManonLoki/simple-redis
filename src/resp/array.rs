@@ -14,10 +14,6 @@ use super::RESP_ARRAY_CAP;
 #[derive(Debug, Clone, PartialEq, PartialOrd)]
 pub struct RespArray(pub(crate) Vec<RespFrame>);
 
-/// RespNullArray
-#[derive(Debug, Clone, PartialEq, PartialOrd)]
-pub struct RespNullArray;
-
 /// - array:"*<number-of-elements>\r\n<element-1>...<element-n>"
 ///    -"*2\r\n$3\r\nget\r\n$5\r\nhello\r\n"
 impl RespEncode for RespArray {
@@ -36,13 +32,6 @@ impl RespEncode for RespArray {
         buf.extend_from_slice(b"\r\n");
 
         buf
-    }
-}
-
-/// - null array:"*-1\r\n"
-impl RespEncode for RespNullArray {
-    fn encode(self) -> Vec<u8> {
-        "*-1\r\n".to_string().into_bytes()
     }
 }
 
@@ -81,18 +70,6 @@ impl RespDecode for RespArray {
     }
 }
 
-/// - null array:"*-1\r\n"
-impl RespDecode for RespNullArray {
-    const PREFIX: &'static str = "*";
-    fn decode(buf: &mut BytesMut) -> Result<Self, RespError> {
-        extract_fixed_data(buf, "*-1\r\n", Self::PREFIX)?;
-        Ok(RespNullArray)
-    }
-    fn expect_length(_buf: &[u8]) -> Result<usize, RespError> {
-        Ok(5)
-    }
-}
-
 impl RespArray {
     pub fn new(s: impl Into<Vec<RespFrame>>) -> Self {
         RespArray(s.into())
@@ -104,6 +81,29 @@ impl Deref for RespArray {
 
     fn deref(&self) -> &Self::Target {
         &self.0
+    }
+}
+
+/// RespNullArray
+#[derive(Debug, Clone, PartialEq, PartialOrd)]
+pub struct RespNullArray;
+
+/// - null array:"*-1\r\n"
+impl RespEncode for RespNullArray {
+    fn encode(self) -> Vec<u8> {
+        "*-1\r\n".to_string().into_bytes()
+    }
+}
+
+/// - null array:"*-1\r\n"
+impl RespDecode for RespNullArray {
+    const PREFIX: &'static str = "*";
+    fn decode(buf: &mut BytesMut) -> Result<Self, RespError> {
+        extract_fixed_data(buf, "*-1\r\n", Self::PREFIX)?;
+        Ok(RespNullArray)
+    }
+    fn expect_length(_buf: &[u8]) -> Result<usize, RespError> {
+        Ok(5)
     }
 }
 

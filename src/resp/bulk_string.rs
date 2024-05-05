@@ -10,10 +10,6 @@ use super::{parse_length, CRLF_LEN};
 #[derive(Debug, Clone, PartialEq, PartialOrd)]
 pub struct BulkString(pub(crate) Vec<u8>);
 
-/// RespNullBulkString
-#[derive(Debug, Clone, PartialEq, PartialOrd)]
-pub struct RespNullBulkString;
-
 ///  - bulk string:"$<Length>\r\n<data>\r\n"
 impl RespEncode for BulkString {
     fn encode(self) -> Vec<u8> {
@@ -52,37 +48,6 @@ impl RespDecode for BulkString {
     }
 }
 
-/// - null bulk string:"$-1\r\n"
-impl RespEncode for RespNullBulkString {
-    fn encode(self) -> Vec<u8> {
-        "$-1\r\n".to_string().into_bytes()
-    }
-}
-
-/// - null bulk string:"$-1\r\n"
-impl RespDecode for RespNullBulkString {
-    const PREFIX: &'static str = "$";
-    fn decode(buf: &mut BytesMut) -> Result<Self, RespError> {
-        extract_fixed_data(buf, "$-1\r\n", Self::PREFIX)?;
-        Ok(RespNullBulkString)
-    }
-    fn expect_length(_buf: &[u8]) -> Result<usize, RespError> {
-        Ok(5)
-    }
-}
-
-impl AsRef<[u8]> for BulkString {
-    fn as_ref(&self) -> &[u8] {
-        &self.0
-    }
-}
-
-impl BulkString {
-    pub fn new(s: impl Into<Vec<u8>>) -> Self {
-        BulkString(s.into())
-    }
-}
-
 impl From<&str> for BulkString {
     fn from(s: &str) -> Self {
         BulkString(s.as_bytes().to_vec())
@@ -100,12 +65,46 @@ impl<const N: usize> From<&[u8; N]> for BulkString {
         BulkString(s.to_vec())
     }
 }
+impl AsRef<[u8]> for BulkString {
+    fn as_ref(&self) -> &[u8] {
+        &self.0
+    }
+}
 
 impl Deref for BulkString {
     type Target = Vec<u8>;
 
     fn deref(&self) -> &Self::Target {
         &self.0
+    }
+}
+
+impl BulkString {
+    pub fn new(s: impl Into<Vec<u8>>) -> Self {
+        BulkString(s.into())
+    }
+}
+
+/// RespNullBulkString
+#[derive(Debug, Clone, PartialEq, PartialOrd)]
+pub struct RespNullBulkString;
+
+/// - null bulk string:"$-1\r\n"
+impl RespEncode for RespNullBulkString {
+    fn encode(self) -> Vec<u8> {
+        "$-1\r\n".to_string().into_bytes()
+    }
+}
+
+/// - null bulk string:"$-1\r\n"
+impl RespDecode for RespNullBulkString {
+    const PREFIX: &'static str = "$";
+    fn decode(buf: &mut BytesMut) -> Result<Self, RespError> {
+        extract_fixed_data(buf, "$-1\r\n", Self::PREFIX)?;
+        Ok(RespNullBulkString)
+    }
+    fn expect_length(_buf: &[u8]) -> Result<usize, RespError> {
+        Ok(5)
     }
 }
 

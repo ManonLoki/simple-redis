@@ -37,7 +37,7 @@ mod tests {
 
     use super::*;
     #[test]
-    fn test_encode_boolean() {
+    fn test_encode_bool() {
         let frame: RespFrame = true.into();
         let result = frame.encode();
         assert_eq!(result, b"#t\r\n");

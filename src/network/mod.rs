@@ -1,12 +1,16 @@
+mod codec;
+
 use futures::{SinkExt, StreamExt};
 use tokio::net::TcpStream;
 
 use crate::{
     cmd::{Command, CommandExecutor},
-    Backend, RespDecode, RespEncode, RespError, RespFrame,
+    Backend, RespFrame,
 };
 use anyhow::Result;
-use tokio_util::codec::{Decoder, Encoder, Framed};
+use tokio_util::codec::Framed;
+
+use self::codec::RedisCodec;
 
 /// 处理输入的Resp
 #[derive(Debug)]
@@ -19,10 +23,6 @@ struct RedisRequest {
 struct RedisResponse {
     frame: RespFrame,
 }
-
-/// Redis的Codec四线
-#[derive(Debug)]
-struct RedisCodec;
 
 /// 处理客户端连接
 pub async fn stream_handler(stream: TcpStream, backend: Backend) -> Result<()> {
@@ -57,29 +57,4 @@ async fn request_handler(req: RedisRequest) -> Result<RedisResponse> {
     // 执行命令等结果
     let ret_frame = cmd.execute(&backend);
     Ok(RedisResponse { frame: ret_frame })
-}
-
-/// 将RespFrame Encode成bytes
-impl Encoder<RespFrame> for RedisCodec {
-    type Error = anyhow::Error;
-
-    fn encode(&mut self, item: RespFrame, dst: &mut bytes::BytesMut) -> Result<()> {
-        let encode = item.encode();
-        dst.extend_from_slice(&encode);
-        Ok(())
-    }
-}
-
-/// 将Bytes Decode成RespFrame
-impl Decoder for RedisCodec {
-    type Item = RespFrame;
-    type Error = anyhow::Error;
-
-    fn decode(&mut self, src: &mut bytes::BytesMut) -> Result<Option<Self::Item>> {
-        match RespFrame::decode(src) {
-            Ok(frame) => Ok(Some(frame)),
-            Err(RespError::NotComplete) => Ok(None),
-            Err(e) => Err(e.into()),
-        }
-    }
 }

@@ -1,6 +1,12 @@
 use crate::{backend::Backend, RespArray, RespFrame};
 
-use super::{extract_args, validate_command, CommandError, CommandExecutor, Get, Set, RESP_OK};
+use super::{extract_args, validate_command, CommandError, CommandExecutor, RESP_OK};
+
+/// Get Command
+#[derive(Debug)]
+pub struct Get {
+    key: String,
+}
 
 /// 为Get实现Executor 实际上就是去Backend中获取数据
 impl CommandExecutor for Get {
@@ -9,13 +15,6 @@ impl CommandExecutor for Get {
             Some(v) => v,
             None => RespFrame::Null(crate::RespNull),
         }
-    }
-}
-/// 为Set实现Executor 实际上就是去Backend中设置数据
-impl CommandExecutor for Set {
-    fn execute(self, backend: &Backend) -> RespFrame {
-        backend.set(self.key.clone(), self.value.clone());
-        RESP_OK.clone()
     }
 }
 
@@ -36,6 +35,21 @@ impl TryFrom<RespArray> for Get {
             }),
             _ => Err(CommandError::InvalidCommand("Missing key".to_string())),
         }
+    }
+}
+
+/// Set Command
+#[derive(Debug)]
+pub struct Set {
+    key: String,
+    value: RespFrame,
+}
+
+/// 为Set实现Executor 实际上就是去Backend中设置数据
+impl CommandExecutor for Set {
+    fn execute(self, backend: &Backend) -> RespFrame {
+        backend.set(self.key.clone(), self.value.clone());
+        RESP_OK.clone()
     }
 }
 

@@ -69,7 +69,7 @@ mod tests {
     }
 
     #[test]
-    fn test_double_decode() -> Result<()> {
+    fn test_decode_double() -> Result<()> {
         // 正常逻辑
         let mut buf = BytesMut::from(",12.34\r\n");
         let frame = f64::decode(&mut buf)?;

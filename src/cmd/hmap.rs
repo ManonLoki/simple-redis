@@ -1,8 +1,13 @@
 use crate::{Backend, RespArray, RespFrame, RespMap};
 
-use super::{
-    extract_args, validate_command, CommandError, CommandExecutor, HGet, HGetAll, HSet, RESP_OK,
-};
+use super::{extract_args, validate_command, CommandError, CommandExecutor, RESP_OK};
+
+/// HGet Command
+#[derive(Debug)]
+pub struct HGet {
+    key: String,
+    field: String,
+}
 
 /// 为HGet实现Executor 实际上就是去Backend中获取数据
 impl CommandExecutor for HGet {
@@ -14,31 +19,6 @@ impl CommandExecutor for HGet {
     }
 }
 
-/// 为HGetAll实现Executor 实际上就是去Backend中获取内部的DashMap
-impl CommandExecutor for HGetAll {
-    fn execute(self, backend: &Backend) -> RespFrame {
-        let hmap = backend.hgetall(&self.key);
-        match hmap {
-            Some(hmap) => {
-                // 由于是DashMap，因此这里需要遍历数据转换为RespMap(BTreeMap)
-                let mut map = RespMap::default();
-                for part in hmap.iter() {
-                    map.insert(part.key().to_string(), part.value().clone());
-                }
-                map.into()
-            }
-            None => RespFrame::Null(crate::RespNull),
-        }
-    }
-}
-
-/// 为HSet实现Executor 实际上就是去Backend中设置数据
-impl CommandExecutor for HSet {
-    fn execute(self, backend: &Backend) -> RespFrame {
-        backend.hset(self.key, self.field, self.value);
-        RESP_OK.clone()
-    }
-}
 /// 从RespArray中解析HGet命令
 impl TryFrom<RespArray> for HGet {
     type Error = CommandError;
@@ -59,6 +39,30 @@ impl TryFrom<RespArray> for HGet {
     }
 }
 
+/// HGetAll Command
+#[derive(Debug)]
+pub struct HGetAll {
+    key: String,
+}
+
+/// 为HGetAll实现Executor 实际上就是去Backend中获取内部的DashMap
+impl CommandExecutor for HGetAll {
+    fn execute(self, backend: &Backend) -> RespFrame {
+        let hmap = backend.hgetall(&self.key);
+        match hmap {
+            Some(hmap) => {
+                // 由于是DashMap，因此这里需要遍历数据转换为RespMap(BTreeMap)
+                let mut map = RespMap::default();
+                for part in hmap.iter() {
+                    map.insert(part.key().to_string(), part.value().clone());
+                }
+                map.into()
+            }
+            None => RespFrame::Null(crate::RespNull),
+        }
+    }
+}
+
 /// 从RespArray中解析HGetAll命令
 impl TryFrom<RespArray> for HGetAll {
     type Error = CommandError;
@@ -73,6 +77,21 @@ impl TryFrom<RespArray> for HGetAll {
             }),
             _ => Err(CommandError::InvalidArgument("Invalid key".to_string())),
         }
+    }
+}
+
+/// HSet Command
+#[derive(Debug)]
+pub struct HSet {
+    key: String,
+    field: String,
+    value: RespFrame,
+}
+/// 为HSet实现Executor 实际上就是去Backend中设置数据
+impl CommandExecutor for HSet {
+    fn execute(self, backend: &Backend) -> RespFrame {
+        backend.hset(self.key, self.field, self.value);
+        RESP_OK.clone()
     }
 }
 
