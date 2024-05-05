@@ -1,4 +1,4 @@
-use crate::{Backend, RespArray, RespFrame, RespMap};
+use crate::{Backend, BulkString, RespArray, RespFrame};
 
 use super::{extract_args, validate_command, CommandError, CommandExecutor, RESP_OK};
 
@@ -43,6 +43,7 @@ impl TryFrom<RespArray> for HGet {
 #[derive(Debug)]
 pub struct HGetAll {
     key: String,
+    sort: bool,
 }
 
 /// 为HGetAll实现Executor 实际上就是去Backend中获取内部的DashMap
@@ -51,14 +52,24 @@ impl CommandExecutor for HGetAll {
         let hmap = backend.hgetall(&self.key);
         match hmap {
             Some(hmap) => {
-                // 由于是DashMap，因此这里需要遍历数据转换为RespMap(BTreeMap)
-                let mut map = RespMap::default();
+                // 这里最终期望的是一个RespArray
+                let mut data = Vec::with_capacity(hmap.len() * 2);
                 for part in hmap.iter() {
-                    map.insert(part.key().to_string(), part.value().clone());
+                    let key = part.key().to_owned();
+                    data.push((key, part.value().clone()));
                 }
-                map.into()
+
+                if self.sort {
+                    data.sort_by(|a, b| a.0.cmp(&b.0));
+                }
+                let ret = data
+                    .into_iter()
+                    .flat_map(|(k, v)| vec![BulkString::from(k).into(), v])
+                    .collect::<Vec<RespFrame>>();
+
+                RespArray::new(ret).into()
             }
-            None => RespFrame::Null(crate::RespNull),
+            None => RespArray::new(vec![]).into(),
         }
     }
 }
@@ -74,6 +85,7 @@ impl TryFrom<RespArray> for HGetAll {
         match args.next() {
             Some(RespFrame::BulkString(key)) => Ok(HGetAll {
                 key: String::from_utf8(key.0)?,
+                sort: false,
             }),
             _ => Err(CommandError::InvalidArgument("Invalid key".to_string())),
         }
@@ -195,14 +207,17 @@ mod tests {
 
         let cmd = HGetAll {
             key: "map".to_string(),
+            sort: true,
         };
         let result = cmd.execute(&backend);
-        let mut expected = RespMap::default();
-        expected.insert("hello".to_string(), RespFrame::BulkString(b"world".into()));
-        expected.insert(
-            "hello1".to_string(),
-            RespFrame::BulkString(b"world1".into()),
-        );
+
+        let expected = RespArray::new([
+            BulkString::from("hello").into(),
+            BulkString::from("world").into(),
+            BulkString::from("hello1").into(),
+            BulkString::from("world1").into(),
+        ]);
+
         assert_eq!(result, expected.into());
         Ok(())
     }
