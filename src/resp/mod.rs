@@ -69,7 +69,7 @@ pub enum RespError {
 }
 
 #[enum_dispatch::enum_dispatch(RespEncode)]
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Clone, PartialEq, PartialOrd)]
 pub enum RespFrame {
     // - simple string:"+OK\r\n"
     SimpleString(SimpleString),
@@ -99,36 +99,36 @@ pub enum RespFrame {
 }
 
 /// SimpleString
-#[derive(Debug, PartialEq)]
-pub struct SimpleString(String);
+#[derive(Debug, Clone, PartialEq, PartialOrd)]
+pub struct SimpleString(pub(crate) String);
 
 /// SimpleError
-#[derive(Debug, PartialEq)]
-pub struct SimpleError(String);
+#[derive(Debug, Clone, PartialEq, PartialOrd)]
+pub struct SimpleError(pub(crate) String);
 
 /// BulkString
-#[derive(Debug, PartialEq)]
-pub struct BulkString(Vec<u8>);
+#[derive(Debug, Clone, PartialEq, PartialOrd)]
+pub struct BulkString(pub(crate) Vec<u8>);
 
 /// RespNullBulkString
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Clone, PartialEq, PartialOrd)]
 pub struct RespNullBulkString;
 /// RespNull
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Clone, PartialEq, PartialOrd)]
 pub struct RespNull;
 /// RespNullArray
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Clone, PartialEq, PartialOrd)]
 pub struct RespNullArray;
 
 /// RespArray
-#[derive(Debug, PartialEq)]
-pub struct RespArray(Vec<RespFrame>);
+#[derive(Debug, Clone, PartialEq, PartialOrd)]
+pub struct RespArray(pub(crate) Vec<RespFrame>);
 /// RespMap
-#[derive(Debug, PartialEq, Default)]
-pub struct RespMap(BTreeMap<String, RespFrame>);
+#[derive(Debug, Clone, PartialEq, PartialOrd, Default)]
+pub struct RespMap(pub(crate) BTreeMap<String, RespFrame>);
 /// RespSet
-#[derive(Debug, PartialEq, Default)]
-pub struct RespSet(Vec<RespFrame>);
+#[derive(Debug, Clone, PartialEq, PartialOrd, Default)]
+pub struct RespSet(pub(crate) Vec<RespFrame>);
 
 impl Deref for SimpleString {
     type Target = String;
@@ -264,5 +264,17 @@ impl<const N: usize> From<&[u8; N]> for BulkString {
 impl<const N: usize> From<&[u8; N]> for RespFrame {
     fn from(s: &[u8; N]) -> Self {
         BulkString(s.to_vec()).into()
+    }
+}
+
+impl AsRef<str> for SimpleString {
+    fn as_ref(&self) -> &str {
+        self.0.as_str()
+    }
+}
+
+impl AsRef<[u8]> for BulkString {
+    fn as_ref(&self) -> &[u8] {
+        &self.0
     }
 }

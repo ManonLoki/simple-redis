@@ -436,7 +436,7 @@ fn calc_total_length(buf: &[u8], end: usize, len: usize, prefix: &str) -> Result
             Ok(total)
         }
         "%" => {
-            // find nth CRLF in the buffer. For map, we need to find 2 CRLF for each key-value pair
+            // Map需要处理Key的长度和Value的长度
             for _ in 0..len {
                 let len = SimpleString::expect_length(data)?;
 
