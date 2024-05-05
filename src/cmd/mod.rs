@@ -40,6 +40,8 @@ pub enum Command {
     HGet(HGet),
     HSet(HSet),
     HGetAll(HGetAll),
+
+    Unrecognized(Unrecognized),
 }
 
 /// Get Command
@@ -75,6 +77,23 @@ pub struct HSet {
 pub struct HGetAll {
     key: String,
 }
+/// 暂时无法处理的Command
+#[derive(Debug)]
+pub struct Unrecognized;
+
+/// 实现从Command到RespFrame的转换，只要RespArray
+impl TryFrom<RespFrame> for Command {
+    type Error = CommandError;
+
+    fn try_from(value: RespFrame) -> Result<Self, Self::Error> {
+        match value {
+            RespFrame::Array(array) => array.try_into(),
+            _ => Err(CommandError::InvalidCommand(
+                "Command must be an array".to_string(),
+            )),
+        }
+    }
+}
 
 /// 尝试将RespArray 转换为对应的Command
 impl TryFrom<RespArray> for Command {
@@ -90,15 +109,19 @@ impl TryFrom<RespArray> for Command {
                 b"hget" => Ok(HGet::try_from(value)?.into()),
                 b"hset" => Ok(HSet::try_from(value)?.into()),
                 b"hgetall" => Ok(HGetAll::try_from(value)?.into()),
-                _ => Err(CommandError::InvalidCommand(format!(
-                    "Invalid command: {}",
-                    String::from_utf8_lossy(cmd.as_ref())
-                ))),
+                _ => Ok(Unrecognized.into()),
             },
             _ => Err(CommandError::InvalidCommand(
                 "Command must be a bulk string with first args".to_string(),
             )),
         }
+    }
+}
+
+/// 实现CommandExecutor Trait
+impl CommandExecutor for Unrecognized {
+    fn execute(self, _backend: &Backend) -> RespFrame {
+        RESP_OK.clone()
     }
 }
 

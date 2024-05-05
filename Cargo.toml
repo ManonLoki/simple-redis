@@ -7,8 +7,14 @@ license = "MIT"
 
 [dependencies]
 anyhow = "1.0.82"
+axum = "0.7.5"
 bytes = { version = "1.6.0", features = ["serde"] }
 dashmap = "5.5.3"
 enum_dispatch = "0.3.13"
+futures = { version = "0.3.30", default-features = false }
 lazy_static = "1.4.0"
 thiserror = "1.0.59"
+tokio = { version = "1.37.0", features = ["fs", "macros", "net", "rt", "rt-multi-thread"] }
+tokio-util = { version = "0.7.11", features = ["io-util", "codec"] }
+tracing = "0.1.40"
+tracing-subscriber = "0.3.18"
