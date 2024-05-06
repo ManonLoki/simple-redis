@@ -20,8 +20,9 @@ use bytes::{Buf, BytesMut};
 use thiserror::Error;
 
 pub use {
-    self::array::RespArray, bulk_string::BulkString, frame::RespFrame, map::RespMap,
-    null::RespNull, set::RespSet, simpe_string::SimpleString, simple_error::SimpleError,
+    self::array::RespArray, bulk_string::BulkString, double::RespDouble, frame::RespFrame,
+    map::RespMap, null::RespNull, set::RespSet, simpe_string::SimpleString,
+    simple_error::SimpleError,
 };
 
 /// 预分配的缓冲区大小

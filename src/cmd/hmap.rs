@@ -130,9 +130,54 @@ impl TryFrom<RespArray> for HSet {
     }
 }
 
+/// HMGet Command 一个Key 多个Field
+#[derive(Debug)]
+pub struct HMGet {
+    key: String,
+    fields: Vec<String>,
+}
+
+impl CommandExecutor for HMGet {
+    fn execute(self, backend: &Backend) -> RespFrame {
+        match backend.hmget(&self.key, &self.fields) {
+            Some(values) => RespArray::new(values).into(),
+            None => RespArray::new(vec![]).into(),
+        }
+    }
+}
+
+impl TryFrom<RespArray> for HMGet {
+    type Error = CommandError;
+    fn try_from(value: RespArray) -> Result<Self, Self::Error> {
+        validate_command(&value, &["hmget"], 2)?;
+
+        let mut args = extract_args(value, 1)?.into_iter();
+
+        match args.next() {
+            Some(RespFrame::BulkString(key)) => {
+                // 剩余的数据就是fields
+                let fields = args
+                    .map(|frame| match frame {
+                        RespFrame::BulkString(field) => String::from_utf8(field.0).unwrap(),
+                        _ => "".to_string(),
+                    })
+                    .collect();
+
+                Ok(HMGet {
+                    key: String::from_utf8(key.0)?,
+                    fields,
+                })
+            }
+            _ => Err(CommandError::InvalidArgument(
+                "Invalid key or fields".to_string(),
+            )),
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use crate::RespDecode;
+    use crate::{RespDecode, RespNull};
 
     use super::*;
     use anyhow::Result;
@@ -216,6 +261,54 @@ mod tests {
             BulkString::from("world").into(),
             BulkString::from("hello1").into(),
             BulkString::from("world1").into(),
+        ]);
+
+        assert_eq!(result, expected.into());
+        Ok(())
+    }
+
+    #[test]
+    fn test_hmget_from_resp_array() -> Result<()> {
+        let mut buf = BytesMut::new();
+        buf.extend_from_slice(b"*4\r\n$5\r\nhmget\r\n$3\r\nmap\r\n$5\r\nhello\r\n$5\r\nworld\r\n");
+        let frame = RespArray::decode(&mut buf)?;
+        let result: HMGet = frame.try_into()?;
+        assert_eq!(result.key, "map");
+        assert_eq!(result.fields, vec!["hello", "world"]);
+
+        Ok(())
+    }
+    #[test]
+    fn test_hmget_command() -> Result<()> {
+        let backend = crate::Backend::new();
+        let cmd = HSet {
+            key: "map".to_string(),
+            field: "hello".to_string(),
+            value: RespFrame::BulkString(b"world".into()),
+        };
+        cmd.execute(&backend);
+
+        let cmd = HSet {
+            key: "map".to_string(),
+            field: "world".to_string(),
+            value: RespFrame::BulkString(b"hello".into()),
+        };
+        cmd.execute(&backend);
+
+        let cmd = HMGet {
+            key: "map".to_string(),
+            fields: vec![
+                "hello".to_string(),
+                "world".to_string(),
+                "unknown".to_string(),
+            ],
+        };
+        let result = cmd.execute(&backend);
+
+        let expected = RespArray::new([
+            BulkString::from("world").into(),
+            BulkString::from("hello").into(),
+            RespNull.into(),
         ]);
 
         assert_eq!(result, expected.into());

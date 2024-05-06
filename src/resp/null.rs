@@ -3,7 +3,7 @@ use bytes::BytesMut;
 use crate::{extract_fixed_data, RespDecode, RespEncode, RespError};
 
 /// RespNull
-#[derive(Debug, Clone, PartialEq, PartialOrd)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Hash)]
 pub struct RespNull;
 
 /// - null:"_\r\n"

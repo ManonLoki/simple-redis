@@ -1,8 +1,8 @@
 use std::{ops::Deref, sync::Arc};
 
-use dashmap::DashMap;
+use dashmap::{DashMap, DashSet};
 
-use crate::RespFrame;
+use crate::{RespFrame, RespNull};
 
 #[derive(Debug, Clone)]
 pub struct Backend(Arc<BackendInner>);
@@ -11,6 +11,7 @@ pub struct Backend(Arc<BackendInner>);
 pub struct BackendInner {
     pub(crate) map: DashMap<String, RespFrame>,
     pub(crate) hmap: DashMap<String, DashMap<String, RespFrame>>,
+    pub(crate) set: DashMap<String, DashSet<RespFrame>>,
 }
 
 impl Deref for Backend {
@@ -32,6 +33,7 @@ impl Default for BackendInner {
         BackendInner {
             map: DashMap::new(),
             hmap: DashMap::new(),
+            set: DashMap::new(),
         }
     }
 }
@@ -60,7 +62,40 @@ impl Backend {
         hmap.insert(field, value);
     }
 
+    pub fn hmget(&self, key: &str, fields: &[String]) -> Option<Vec<RespFrame>> {
+        match self.hmap.get(key) {
+            Some(map) => {
+                let ret = fields
+                    .iter()
+                    .map(|field| match map.get(field) {
+                        Some(v) => v.value().clone(),
+                        None => RespNull.into(),
+                    })
+                    .collect();
+
+                Some(ret)
+            }
+            None => None,
+        }
+    }
+
     pub fn hgetall(&self, key: &str) -> Option<DashMap<String, RespFrame>> {
         self.hmap.get(key).map(|v| v.clone())
+    }
+
+    pub fn sadd(&self, key: String, members: Vec<RespFrame>) -> i64 {
+        let set = self.set.entry(key).or_default();
+        let mut count = 0;
+        for member in members {
+            if set.insert(member) {
+                count += 1;
+            }
+        }
+
+        count
+    }
+
+    pub fn sismembers(&self, key: &str) -> Option<DashSet<RespFrame>> {
+        self.set.get(key).map(|v| v.clone())
     }
 }

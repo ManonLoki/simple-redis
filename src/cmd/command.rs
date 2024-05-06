@@ -1,6 +1,9 @@
 use crate::{RespArray, RespFrame};
 
-use super::{CommandError, Get, HGet, HGetAll, HSet, Ping, Set, Unrecognized};
+use super::{
+    hmap::HMGet, CommandError, Echo, Get, HGet, HGetAll, HSet, Ping, SAdd, SISMember, Set,
+    Unrecognized,
+};
 
 /// 创建支持的命令
 #[enum_dispatch::enum_dispatch(CommandExecutor)]
@@ -10,9 +13,13 @@ pub enum Command {
     Set(Set),
     HGet(HGet),
     HSet(HSet),
+    HMGet(HMGet),
     HGetAll(HGetAll),
+    SAdd(SAdd),
+    SISMember(SISMember),
     Ping(Ping),
     Unrecognized(Unrecognized),
+    Echo(Echo),
 }
 
 /// 实现从Command到RespFrame的转换，只要RespArray
@@ -42,8 +49,12 @@ impl TryFrom<RespArray> for Command {
                 b"set" => Ok(Set::try_from(value)?.into()),
                 b"hget" => Ok(HGet::try_from(value)?.into()),
                 b"hset" => Ok(HSet::try_from(value)?.into()),
+                b"hmget" => Ok(HGetAll::try_from(value)?.into()),
                 b"hgetall" => Ok(HGetAll::try_from(value)?.into()),
                 b"ping" => Ok(Ping::try_from(value)?.into()),
+                b"echo" => Ok(Echo::try_from(value)?.into()),
+                b"sadd" => Ok(SAdd::try_from(value)?.into()),
+                b"sismember" => Ok(SISMember::try_from(value)?.into()),
                 _ => Ok(Unrecognized.into()),
             },
             _ => Err(CommandError::InvalidCommand(

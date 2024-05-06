@@ -1,7 +1,9 @@
 mod command;
+mod echo;
 mod hmap;
 mod map;
 mod ping;
+mod set;
 mod unrecognized;
 
 use lazy_static::lazy_static;
@@ -12,9 +14,11 @@ use crate::{backend::Backend, RespArray, RespError, RespFrame, SimpleString};
 
 pub use self::{
     command::Command,
-    hmap::{HGet, HGetAll, HSet},
+    echo::Echo,
+    hmap::{HGet, HGetAll, HMGet, HSet},
     map::{Get, Set},
     ping::Ping,
+    set::{SAdd, SISMember},
     unrecognized::Unrecognized,
 };
 lazy_static! {
@@ -46,14 +50,15 @@ pub enum CommandError {
 fn validate_command(
     value: &RespArray,
     names: &[&'static str],
-    n_args: usize,
+    min_args: usize,
 ) -> Result<(), CommandError> {
-    // 判断实际的Array长度，是否等于 期望的命令的数量 + 期望的参数的数量
-    if value.len() != n_args + names.len() {
+    // 判断实际的Array长度  如果小于 期望的命令的数量 + 期望的参数的最小数量 则出错
+    // 大于无所谓 可以抛弃 不然无法支持HMGet这样的命令
+    if value.len() < min_args + names.len() {
         return Err(CommandError::InvalidArgument(format!(
             "{} command must have exactly {} argument",
             names.join(" "),
-            n_args
+            min_args
         )));
     }
 

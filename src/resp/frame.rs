@@ -5,8 +5,10 @@ use crate::{
     SimpleString,
 };
 
+use super::double::RespDouble;
+
 #[enum_dispatch::enum_dispatch(RespEncode)]
-#[derive(Debug, Clone, PartialEq, PartialOrd)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Hash)]
 pub enum RespFrame {
     // - simple string:"+OK\r\n"
     SimpleString(SimpleString),
@@ -27,7 +29,7 @@ pub enum RespFrame {
     // - boolean:"#<tf>\r\n"
     Boolean(bool),
     // - double:",[+>]<integral>[.<fractional>][<Ee>[sign]<exponent>]\r\n"
-    Double(f64),
+    Double(RespDouble),
     // - map:"%<number-of-entries>\r\n<key-1><value-1>...<key-n><value-n>"
     Map(RespMap),
     // - set:"~<number-of-elements>\r\n<element-1>..<element-n>"
@@ -69,7 +71,7 @@ impl RespDecode for RespFrame {
                 Ok(frame.into())
             }
             Some(b',') => {
-                let frame = f64::decode(buf)?;
+                let frame = RespDouble::decode(buf)?;
                 Ok(frame.into())
             }
             Some(b'%') => {
@@ -98,7 +100,7 @@ impl RespDecode for RespFrame {
             Some(b'+') => SimpleString::expect_length(buf),
             Some(b'-') => SimpleError::expect_length(buf),
             Some(b'#') => bool::expect_length(buf),
-            Some(b',') => f64::expect_length(buf),
+            Some(b',') => RespDouble::expect_length(buf),
             Some(b'_') => RespNull::expect_length(buf),
             _ => Err(RespError::NotComplete),
         }

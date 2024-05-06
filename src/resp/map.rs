@@ -10,7 +10,7 @@ use crate::{RespDecode, RespEncode, RespError, RespFrame, SimpleString};
 use super::{calc_total_length, parse_length, CRLF_LEN, RESP_ARRAY_CAP};
 
 /// RespMap
-#[derive(Debug, Clone, PartialEq, PartialOrd, Default)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Hash, Default)]
 pub struct RespMap(pub(crate) BTreeMap<String, RespFrame>);
 
 /// - map:"%<number-of-entries>\r\n<key-1><value-1>...<key-n><value-n>"

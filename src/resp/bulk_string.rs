@@ -7,7 +7,7 @@ use crate::{RespDecode, RespEncode, RespError};
 use super::{parse_length, CRLF_LEN};
 
 /// BulkString
-#[derive(Debug, Clone, PartialEq, PartialOrd)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Hash)]
 pub struct BulkString(pub(crate) Vec<u8>);
 
 ///  - bulk string:"$<Length>\r\n<data>\r\n"

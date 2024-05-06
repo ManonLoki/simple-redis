@@ -7,7 +7,7 @@ use crate::{extract_simple_frame_data, RespDecode, RespEncode, RespError};
 use super::CRLF_LEN;
 
 /// SimpleError
-#[derive(Debug, Clone, PartialEq, PartialOrd)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Hash)]
 pub struct SimpleError(pub(crate) String);
 
 impl SimpleError {

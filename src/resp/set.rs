@@ -7,7 +7,7 @@ use crate::{RespDecode, RespEncode, RespError, RespFrame};
 use super::{calc_total_length, parse_length, CRLF_LEN, RESP_ARRAY_CAP};
 
 /// RespSet
-#[derive(Debug, Clone, PartialEq, PartialOrd, Default)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Default, Hash)]
 pub struct RespSet(pub(crate) Vec<RespFrame>);
 
 /// - set:"~<number-of-elements>\r\n<element-1>..<element-n>"

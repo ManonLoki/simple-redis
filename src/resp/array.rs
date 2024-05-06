@@ -10,7 +10,7 @@ use crate::{
 use super::RESP_ARRAY_CAP;
 
 /// RespArray
-#[derive(Debug, Clone, PartialEq, PartialOrd)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Hash)]
 pub struct RespArray(pub(crate) Vec<RespFrame>);
 
 /// - array:"*<number-of-elements>\r\n<element-1>...<element-n>"
