@@ -15,26 +15,35 @@ impl RespEncode for RespSet {
     fn encode(self) -> Vec<u8> {
         let mut buf = Vec::with_capacity(RESP_ARRAY_CAP);
 
-        // 获取原始长度
-        let mut len = self.len();
-        // 处理每一个元素
+        buf.extend_from_slice(format!("~{}\r\n", self.len()).as_bytes());
+
         for item in self.0 {
-            let encoded = item.encode();
-
-            // 处理重复的字节片段
-            if buf.windows(encoded.len()).any(|window| window == encoded) {
-                len -= 1;
-                continue;
-            }
-
-            buf.extend_from_slice(&encoded);
+            buf.extend_from_slice(&item.encode());
         }
+        buf
 
-        // 处理头部
-        let mut header = format!("~{}\r\n", len).into_bytes();
-        header.extend_from_slice(&buf);
+        // 由于底层存储是基于HashSet的实现，这里的数据就没必要去重了
 
-        header
+        // // 获取原始长度
+        // let mut len = self.len();
+        // // 处理每一个元素
+        // for item in self.0 {
+        //     let encoded = item.encode();
+
+        //     // 处理重复的字节片段
+        //     if buf.windows(encoded.len()).any(|window| window == encoded) {
+        //         len -= 1;
+        //         continue;
+        //     }
+
+        //     buf.extend_from_slice(&encoded);
+        // }
+
+        // // 处理头部
+        // let mut header = format!("~{}\r\n", self.len()).into_bytes();
+        // header.extend_from_slice(&buf);
+
+        // header
     }
 }
 
@@ -95,8 +104,6 @@ mod tests {
         let mut set = RespSet::default();
         set.push(BulkString::new(b"hello").into());
         set.push(100.into());
-        //去重 这里过不去
-        set.push(BulkString::new(b"hello").into());
 
         let frame: RespFrame = set.into();
 
